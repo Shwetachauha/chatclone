@@ -63,7 +63,7 @@ export const MessageBubble = memo(function MessageBubble({
       }));
     }
     // Emit to server for real-time sync
-    messageEmitters.reactMessage(message.chatId, message.id, emoji);
+    messageEmitters.reactMessage(message.id, emoji);
   }, [dispatch, currentUser, message.chatId, message.id, message.reactions]);
 
   const handleEdit = useCallback((newContent: string) => {

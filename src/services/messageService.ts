@@ -2,13 +2,30 @@ import api from './api';
 import { Message, PaginationParams } from '@/types';
 
 interface MessagesResponse {
-  messages: Message[];
+  messages: unknown[];
   hasMore: boolean;
   nextCursor: string | null;
 }
 
 interface SendMessageResponse {
-  message: Message;
+  message: unknown;
+}
+
+// Normalize server message format (_id → id, chat → chatId, sender._id → sender.id)
+function normalizeMessage(raw: Record<string, unknown>): Message {
+  const rawSender = raw.sender as Record<string, unknown> | undefined;
+  return {
+    ...(raw as unknown as Message),
+    id: (raw.id || raw._id) as string,
+    chatId: (raw.chatId || raw.chat) as string,
+    sender: rawSender
+      ? {
+          id: (rawSender.id || rawSender._id) as string,
+          name: rawSender.name as string,
+          avatar: rawSender.avatar as string | undefined,
+        }
+      : (raw.sender as unknown as Message['sender']),
+  };
 }
 
 export const messageService = {
@@ -21,7 +38,7 @@ export const messageService = {
       `/messages/${chatId}?${queryParams.toString()}`
     );
     return {
-      messages: response.data.messages,
+      messages: (response.data.messages || []).map((m) => normalizeMessage(m as Record<string, unknown>)),
       hasMore: response.data.hasMore,
       cursor: response.data.nextCursor,
     };
@@ -37,7 +54,7 @@ export const messageService = {
         }
       },
     });
-    return response.data.message;
+    return normalizeMessage(response.data.message as Record<string, unknown>);
   },
 
   async markRead(chatId: string): Promise<void> {

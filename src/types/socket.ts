@@ -6,7 +6,7 @@ export enum ClientEvent {
   MARK_READ = 'mark_read',
   DELETE_MESSAGE = 'delete_message',
   EDIT_MESSAGE = 'message:edit',
-  REACT_MESSAGE = 'react_message',
+  REACT_MESSAGE = 'message:react',
   GROUP_UPDATE = 'group:update',
   CALL_INITIATE = 'call:initiate',
   CALL_OFFER = 'call:offer',
@@ -35,6 +35,8 @@ export enum ServerEvent {
   CALL_ENDED = 'call:ended',
   CALL_LOG_CREATED = 'call_log_created',
   CALL_LOG_UPDATED = 'call_log_updated',
+  PROFILE_UPDATED = 'profile_updated',
+  NEW_CHAT = 'new_chat',
 }
 
 export interface TypingEvent {

@@ -1,17 +1,9 @@
 import { Socket } from 'socket.io-client';
 import { store } from '@/store';
 import { ServerEvent, Message } from '@/types';
-import { addMessage, addReaction, removeReaction, deleteMessage, editMessageContent } from '@/store/slices/messageSlice';
-import { updateLastMessage, incrementUnread } from '@/store/slices/chatSlice';
-
-interface ReactionEvent {
-  chatId: string;
-  messageId: string;
-  emoji: string;
-  userId: string;
-  username: string;
-  action: 'add' | 'remove';
-}
+import { addMessage, updateMessage, deleteMessage, editMessageContent } from '@/store/slices/messageSlice';
+import { updateLastMessage, incrementUnread, addChat } from '@/store/slices/chatSlice';
+import { normalizeChat } from '@/services/chatService';
 
 export function registerMessageHandlers(socket: Socket): void {
   socket.on(ServerEvent.MESSAGE_RECEIVED, (rawMessage: Record<string, unknown>) => {
@@ -74,26 +66,32 @@ export function registerMessageHandlers(socket: Socket): void {
     }
   });
 
-  socket.on(ServerEvent.MESSAGE_REACTION, (event: ReactionEvent) => {
-    const state = store.getState();
-    // Skip if it's our own reaction (already applied locally)
-    if (event.userId === state.auth.user?.id) return;
-
-    if (event.action === 'add') {
-      store.dispatch(addReaction({
-        chatId: event.chatId,
-        messageId: event.messageId,
-        emoji: event.emoji,
-        userId: event.userId,
-        username: event.username,
-      }));
-    } else {
-      store.dispatch(removeReaction({
-        chatId: event.chatId,
-        messageId: event.messageId,
-        emoji: event.emoji,
-        userId: event.userId,
-      }));
+  socket.on(ServerEvent.MESSAGE_REACTION, (data: { message: Record<string, unknown> }) => {
+    console.log('[Socket] message_reaction:', data);
+    const raw = data.message;
+    if (!raw) return;
+    const rawSender = raw.sender as Record<string, unknown> | undefined;
+    const chatId = (raw.chatId || raw.chat) as string;
+    const message: Message = {
+      ...(raw as unknown as Message),
+      id: (raw.id || raw._id) as string,
+      chatId,
+      sender: rawSender
+        ? { id: (rawSender.id || rawSender._id) as string, name: rawSender.name as string, avatar: rawSender.avatar as string | undefined }
+        : (raw.sender as unknown as Message['sender']),
+      reactions: Array.isArray(raw.reactions)
+        ? (raw.reactions as Array<Record<string, unknown>>).map((r) => {
+            const user = r.user as Record<string, unknown> | undefined;
+            return {
+              emoji: r.emoji as string,
+              userId: user ? (user.id || user._id) as string : r.userId as string,
+              username: user ? user.name as string : r.username as string,
+            };
+          })
+        : [],
+    };
+    if (chatId) {
+      store.dispatch(updateMessage({ chatId, message }));
     }
   });
 
@@ -102,12 +100,49 @@ export function registerMessageHandlers(socket: Socket): void {
     store.dispatch(deleteMessage({ chatId: data.chatId, messageId: data.messageId }));
   });
 
-  socket.on(ServerEvent.MESSAGE_EDITED, (data: { chatId: string; messageId: string; content: string }) => {
+  socket.on(ServerEvent.MESSAGE_EDITED, (data: { message: Record<string, unknown> }) => {
     console.log('[Socket] message_edited:', data);
-    store.dispatch(editMessageContent({
-      chatId: data.chatId,
-      messageId: data.messageId,
-      content: data.content,
-    }));
+    const raw = data.message;
+    if (!raw) return;
+    const chatId = (raw.chatId || raw.chat) as string;
+    const messageId = (raw.id || raw._id) as string;
+    const content = raw.content as string;
+    if (chatId && messageId) {
+      store.dispatch(editMessageContent({ chatId, messageId, content }));
+    }
+  });
+
+  // Handle new_chat: when first message is sent to/from a new user, add chat to sidebar
+  socket.on(ServerEvent.NEW_CHAT, (data: { chat: Record<string, unknown>; message: Record<string, unknown> }) => {
+    console.log('[Socket] new_chat:', data);
+    const state = store.getState();
+    const currentUserId = state.auth.user?.id;
+
+    if (data.chat) {
+      const chat = normalizeChat(data.chat);
+      // Derive chatWith from members if not set
+      if (!chat.isGroupChat && (!chat.chatWith || !chat.chatWith.name) && chat.members.length > 0 && currentUserId) {
+        const other = chat.members.find((m) => m.id !== currentUserId) || chat.members[0];
+        chat.chatWith = other;
+      }
+      store.dispatch(addChat(chat));
+    }
+
+    if (data.message) {
+      const rawSender = data.message.sender as Record<string, unknown> | undefined;
+      const message: Message = {
+        ...(data.message as unknown as Message),
+        id: (data.message.id || data.message._id) as string,
+        chatId: (data.message.chatId || data.message.chat) as string,
+        sender: rawSender
+          ? { id: (rawSender.id || rawSender._id) as string, name: rawSender.name as string, avatar: rawSender.avatar as string | undefined }
+          : (data.message.sender as unknown as Message['sender']),
+      };
+
+      if (message.chatId) {
+        store.dispatch(addMessage(message));
+        store.dispatch(incrementUnread(message.chatId));
+      }
+    }
   });
 }

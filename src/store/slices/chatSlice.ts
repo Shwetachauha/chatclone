@@ -20,9 +20,18 @@ const initialState: ChatSliceState = {
 
 export const fetchChats = createAsyncThunk(
   'chat/fetchChats',
-  async (_, { rejectWithValue }) => {
+  async (_, { rejectWithValue, getState }) => {
     try {
-      return await chatService.getChats();
+      const chats = await chatService.getChats();
+      const currentUserId = (getState() as { auth: { user: { id: string } | null } }).auth.user?.id;
+      // Derive chatWith from members for private chats if not set
+      return chats.map((chat) => {
+        if (!chat.isGroupChat && (!chat.chatWith || !chat.chatWith.name) && chat.members.length > 0 && currentUserId) {
+          const other = chat.members.find((m) => m.id !== currentUserId) || chat.members[0];
+          return { ...chat, chatWith: other };
+        }
+        return chat;
+      });
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } } };
       return rejectWithValue(err.response?.data?.message || 'Failed to fetch chats');
@@ -117,6 +126,34 @@ const chatSlice = createSlice({
         state.activeChat = { ...state.activeChat, ...action.payload };
       }
     },
+    updateUserInChats(state, action: PayloadAction<{ userId: string; name: string; avatar?: string }>) {
+      const { userId, name, avatar } = action.payload;
+      for (const chat of state.chats) {
+        // Update chatWith
+        if (chat.chatWith?.id === userId) {
+          chat.chatWith.name = name;
+          if (avatar !== undefined) chat.chatWith.avatar = avatar;
+        }
+        // Update members
+        const member = chat.members.find((m) => m.id === userId);
+        if (member) {
+          member.name = name;
+          if (avatar !== undefined) member.avatar = avatar;
+        }
+      }
+      // Update active chat
+      if (state.activeChat) {
+        if (state.activeChat.chatWith?.id === userId) {
+          state.activeChat.chatWith.name = name;
+          if (avatar !== undefined) state.activeChat.chatWith.avatar = avatar;
+        }
+        const activeMember = state.activeChat.members.find((m) => m.id === userId);
+        if (activeMember) {
+          activeMember.name = name;
+          if (avatar !== undefined) activeMember.avatar = avatar;
+        }
+      }
+    },
     removeChat(state, action: PayloadAction<string>) {
       state.chats = state.chats.filter((c) => c.id !== action.payload);
       if (state.activeChat?.id === action.payload) {
@@ -159,6 +196,7 @@ export const {
   resetUnread,
   addChat,
   updateChatMembers,
+  updateUserInChats,
   sortChats,
   updateChat,
   removeChat,

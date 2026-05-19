@@ -16,7 +16,7 @@ export const messageEmitters = {
     socketManager.emit(ClientEvent.EDIT_MESSAGE, { messageId, content });
   },
 
-  reactMessage(chatId: string, messageId: string, emoji: string): void {
-    socketManager.emit(ClientEvent.REACT_MESSAGE, { chatId, messageId, emoji });
+  reactMessage(messageId: string, emoji: string): void {
+    socketManager.emit(ClientEvent.REACT_MESSAGE, { messageId, emoji });
   },
 };
