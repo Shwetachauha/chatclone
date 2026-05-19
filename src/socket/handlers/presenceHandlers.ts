@@ -2,7 +2,7 @@ import { Socket } from 'socket.io-client';
 import { store } from '@/store';
 import { ServerEvent, OnlineStatusEvent } from '@/types';
 import { setUserOnline } from '@/store/slices/presenceSlice';
-import { updateUserInChats } from '@/store/slices/chatSlice';
+import { updateUserInChats, updateMemberOnline } from '@/store/slices/chatSlice';
 import { setUser } from '@/store/slices/authSlice';
 
 export function registerPresenceHandlers(socket: Socket): void {
@@ -11,6 +11,11 @@ export function registerPresenceHandlers(socket: Socket): void {
     const events = Array.isArray(event) ? event : [event];
     for (const e of events) {
       store.dispatch(setUserOnline({
+        userId: e.userId,
+        isOnline: e.isOnline,
+        lastSeen: e.lastSeen,
+      }));
+      store.dispatch(updateMemberOnline({
         userId: e.userId,
         isOnline: e.isOnline,
         lastSeen: e.lastSeen,

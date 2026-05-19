@@ -3,6 +3,7 @@ import { Chat, LatestMessage } from '@/types';
 import { chatService } from '@/services/chatService';
 import { MOCK_MODE } from '@/mocks/config';
 import { mockChats } from '@/mocks/mockData';
+import { setBulkOnlineStatus } from '@/store/slices/presenceSlice';
 
 interface ChatSliceState {
   chats: Chat[];
@@ -20,18 +21,36 @@ const initialState: ChatSliceState = {
 
 export const fetchChats = createAsyncThunk(
   'chat/fetchChats',
-  async (_, { rejectWithValue, getState }) => {
+  async (_, { rejectWithValue, getState, dispatch }) => {
     try {
       const chats = await chatService.getChats();
       const currentUserId = (getState() as { auth: { user: { id: string } | null } }).auth.user?.id;
       // Derive chatWith from members for private chats if not set
-      return chats.map((chat) => {
+      const normalizedChats = chats.map((chat) => {
         if (!chat.isGroupChat && (!chat.chatWith || !chat.chatWith.name) && chat.members.length > 0 && currentUserId) {
           const other = chat.members.find((m) => m.id !== currentUserId) || chat.members[0];
           return { ...chat, chatWith: other };
         }
         return chat;
       });
+
+      // Seed presence store from members' isOnline field
+      const onlineStatus: Record<string, boolean> = {};
+      for (const chat of normalizedChats) {
+        for (const member of chat.members) {
+          if (member.id && member.id !== currentUserId && member.isOnline !== undefined) {
+            onlineStatus[member.id] = member.isOnline;
+          }
+        }
+        if (chat.chatWith?.id && chat.chatWith.id !== currentUserId && chat.chatWith.isOnline !== undefined) {
+          onlineStatus[chat.chatWith.id] = chat.chatWith.isOnline;
+        }
+      }
+      if (Object.keys(onlineStatus).length > 0) {
+        dispatch(setBulkOnlineStatus(onlineStatus));
+      }
+
+      return normalizedChats;
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } } };
       return rejectWithValue(err.response?.data?.message || 'Failed to fetch chats');
@@ -126,6 +145,31 @@ const chatSlice = createSlice({
         state.activeChat = { ...state.activeChat, ...action.payload };
       }
     },
+    updateMemberOnline(state, action: PayloadAction<{ userId: string; isOnline: boolean; lastSeen?: string | null }>) {
+      const { userId, isOnline, lastSeen } = action.payload;
+      for (const chat of state.chats) {
+        if (chat.chatWith?.id === userId) {
+          chat.chatWith.isOnline = isOnline;
+          if (lastSeen !== undefined) chat.chatWith.lastSeen = lastSeen;
+        }
+        const member = chat.members.find((m) => m.id === userId);
+        if (member) {
+          member.isOnline = isOnline;
+          if (lastSeen !== undefined) member.lastSeen = lastSeen;
+        }
+      }
+      if (state.activeChat) {
+        if (state.activeChat.chatWith?.id === userId) {
+          state.activeChat.chatWith.isOnline = isOnline;
+          if (lastSeen !== undefined) state.activeChat.chatWith.lastSeen = lastSeen;
+        }
+        const activeMember = state.activeChat.members.find((m) => m.id === userId);
+        if (activeMember) {
+          activeMember.isOnline = isOnline;
+          if (lastSeen !== undefined) activeMember.lastSeen = lastSeen;
+        }
+      }
+    },
     updateUserInChats(state, action: PayloadAction<{ userId: string; name: string; avatar?: string }>) {
       const { userId, name, avatar } = action.payload;
       for (const chat of state.chats) {
@@ -196,6 +240,7 @@ export const {
   resetUnread,
   addChat,
   updateChatMembers,
+  updateMemberOnline,
   updateUserInChats,
   sortChats,
   updateChat,
