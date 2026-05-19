@@ -14,9 +14,38 @@ interface ReactionEvent {
 }
 
 export function registerMessageHandlers(socket: Socket): void {
-  socket.on(ServerEvent.MESSAGE_RECEIVED, (message: Message) => {
-    console.log('[Socket] message_received:', { id: message.id, chatId: message.chatId, content: message.content, sender: message.sender.name });
+  socket.on(ServerEvent.MESSAGE_RECEIVED, (rawMessage: Record<string, unknown>) => {
+    // Normalize server message format (backend may use `chat`/`_id`/`sender._id` instead of `chatId`/`id`/`sender.id`)
+    const rawSender = rawMessage.sender as Record<string, unknown> | undefined;
+    const message: Message = {
+      ...(rawMessage as unknown as Message),
+      id: (rawMessage.id || rawMessage._id) as string,
+      chatId: (rawMessage.chatId || rawMessage.chat) as string,
+      sender: rawSender
+        ? {
+            id: (rawSender.id || rawSender._id) as string,
+            name: rawSender.name as string,
+            avatar: rawSender.avatar as string | undefined,
+          }
+        : (rawMessage.sender as unknown as Message['sender']),
+    };
+
+    console.log('[Socket] message_received:', { id: message.id, chatId: message.chatId, content: message.content, sender: message.sender?.name });
+
+    if (!message.chatId) {
+      console.warn('[Socket] message_received: missing chatId, skipping', rawMessage);
+      return;
+    }
+
     const state = store.getState();
+    const currentUserId = state.auth.user?.id;
+
+    // Skip own messages — already handled by optimistic update + REST confirmation
+    if (message.sender?.id === currentUserId) {
+      console.log('[Socket] Skipping own message:', message.id);
+      return;
+    }
+
     const activeChat = state.chat.activeChat;
 
     // Deduplicate: skip if already in store
