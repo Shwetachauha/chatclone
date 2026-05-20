@@ -4,12 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const MotionPaper = motion.div;
 
-const backdropVariants = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1 },
-};
-
-const dialogVariants = {
+const dialogVariants: Record<string, any> = {
   hidden: {
     opacity: 0,
     scale: 0.75,

@@ -2,7 +2,6 @@ import { useEffect, memo, useState } from 'react';
 import {
   Box,
   List,
-  ListItem,
   ListItemButton,
   Typography,
   IconButton,
@@ -22,7 +21,6 @@ import { fetchCallLogs, deleteCallLog } from '@/store/slices/callLogSlice';
 import { CallLog } from '@/types/callLog';
 import { Avatar } from '@/components/common/Avatar';
 import { LoadingSkeleton } from '@/components/common/LoadingSkeleton';
-import { EmptyState } from '@/components/common/EmptyState';
 
 const MotionListItem = motion.create(ListItemButton as any);
 

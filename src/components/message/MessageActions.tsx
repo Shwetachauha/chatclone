@@ -2,10 +2,8 @@ import { useState, memo } from 'react';
 import { Box, IconButton, Popover, Tooltip, keyframes } from '@mui/material';
 import {
   EmojiEmotions,
-  Reply,
   Edit,
   Delete,
-  Forward,
 } from '@mui/icons-material';
 import { Message } from '@/types';
 import { useAppSelector } from '@/hooks/useAuth';
@@ -33,8 +31,8 @@ export const MessageActions = memo(function MessageActions({
   onReact,
   onEdit,
   onDelete,
-  onForward,
-  onReply,
+  onForward: _onForward,
+  onReply: _onReply,
 }: MessageActionsProps) {
   const [emojiAnchor, setEmojiAnchor] = useState<HTMLButtonElement | null>(null);
   const user = useAppSelector((state) => state.auth.user);
@@ -53,11 +51,8 @@ export const MessageActions = memo(function MessageActions({
       sx={{
         position: 'absolute',
         top: '50%',
-        transform: 'translateY(-50%)',
-        [isMine ? 'left' : 'right']: 0,
-        [isMine ? 'marginLeft' : 'marginRight']: '-8px',
-        [isMine ? 'translateX' : 'translateX']: '-100%',
-        ...(isMine ? { left: 0, transform: 'translate(-100%, -50%)' } : { right: 0, transform: 'translate(100%, -50%)' }),
+        ...(isMine ? { left: 0 } : { right: 0 }),
+        transform: isMine ? 'translate(-100%, -50%)' : 'translate(100%, -50%)',
         display: 'none',
         bgcolor: '#1e1e36',
         borderRadius: '12px',

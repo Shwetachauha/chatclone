@@ -72,7 +72,7 @@ export function UserProfilePanel({ open, userId, onClose }: UserProfilePanelProp
             <ListItemIcon><Info /></ListItemIcon>
             <ListItemText
               primary="About"
-              secondary={user.bio || 'Hey there! I\'m using ChatApp.'}
+              secondary={(user as any).bio || 'Hey there! I\'m using ChatApp.'}
             />
           </ListItem>
           <ListItem>

@@ -10,7 +10,7 @@ import {
   Tabs,
   Tab,
 } from '@mui/material';
-import { Search, GroupAdd, ChatBubble, PersonSearch, People, Person, Forum, Phone } from '@mui/icons-material';
+import { Search, GroupAdd, ChatBubble, PersonSearch, People, Person, Phone } from '@mui/icons-material';
 import { useChat } from '@/hooks/useChat';
 import { useAppDispatch, useAppSelector } from '@/hooks/useAuth';
 import { setCreateGroupDialogOpen } from '@/store/slices/uiSlice';
