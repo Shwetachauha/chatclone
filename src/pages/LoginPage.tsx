@@ -3,6 +3,8 @@ import { Box, Typography, keyframes } from '@mui/material';
 import { ChatBubble, Group, Lock } from '@mui/icons-material';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { RegisterForm } from '@/components/auth/RegisterForm';
+import { useAppDispatch } from '@/hooks/useAuth';
+import { clearError } from '@/store/slices/authSlice';
 
 const float = keyframes`
   0%, 100% { transform: translateY(0px); }
@@ -26,6 +28,17 @@ const slideIn = keyframes`
 
 export function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
+  const dispatch = useAppDispatch();
+
+  const switchToRegister = () => {
+    dispatch(clearError());
+    setIsLogin(false);
+  };
+
+  const switchToLogin = () => {
+    dispatch(clearError());
+    setIsLogin(true);
+  };
 
   return (
     <Box
@@ -197,9 +210,9 @@ export function LoginPage() {
           }}
         >
           {isLogin ? (
-            <LoginForm onSwitchToRegister={() => setIsLogin(false)} />
+            <LoginForm onSwitchToRegister={switchToRegister} />
           ) : (
-            <RegisterForm onSwitchToLogin={() => setIsLogin(true)} />
+            <RegisterForm onSwitchToLogin={switchToLogin} />
           )}
         </Box>
       </Box>

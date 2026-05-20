@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback } from 'react';
 import { useAppSelector, useAppDispatch } from '@/hooks/useAuth';
 import {
   startOutgoingCall,
@@ -9,8 +9,23 @@ import {
   toggleVideo,
   CallType,
 } from '@/store/slices/callSlice';
+import { addToast } from '@/store/slices/uiSlice';
 import { callEmitters } from '@/socket/emitters/callEmitters';
-import { setCallSignalHandlers, clearCallSignalHandlers } from '@/socket/handlers/callHandlers';
+import {
+  getLocalStream,
+  getRemoteStream,
+  setPeerConnection,
+  setLocalStream,
+  setRemoteStream,
+  setPendingOffer,
+  getPendingOffer,
+  clearPendingIceCandidates,
+  notifyStreamChange,
+  cleanupCall,
+} from '@/hooks/callState';
+
+// Re-export for CallScreen and callHandlers
+export { getLocalStream, getRemoteStream, onStreamChange, cleanupCall } from '@/hooks/callState';
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
@@ -19,62 +34,29 @@ const ICE_SERVERS: RTCConfiguration = {
   ],
 };
 
-// ── Module-level singletons (shared across all useCall instances) ──
-let peerConnection: RTCPeerConnection | null = null;
-let localStream: MediaStream | null = null;
-let remoteStream: MediaStream | null = null;
-
-// Buffer for incoming offer — held until user accepts
-let pendingOffer: { callerId: string; offer: RTCSessionDescriptionInit } | null = null;
-
-// Buffer ICE candidates that arrive before peerConnection is ready
-let pendingIceCandidates: RTCIceCandidateInit[] = [];
-
-// Subscribers for stream changes — CallScreen registers here
-type StreamListener = () => void;
-const streamListeners = new Set<StreamListener>();
-
-function notifyStreamChange() {
-  streamListeners.forEach((fn) => fn());
-}
-
-/** Get the shared local MediaStream (or null) */
-export function getLocalStream(): MediaStream | null {
-  return localStream;
-}
-/** Get the shared remote MediaStream (or null) */
-export function getRemoteStream(): MediaStream | null {
-  return remoteStream;
-}
-
-function cleanupCall() {
-  console.log('[Call] Cleaning up');
-  pendingOffer = null;
-  pendingIceCandidates = [];
-  if (localStream) {
-    localStream.getTracks().forEach((t) => t.stop());
-    localStream = null;
-  }
-  if (peerConnection) {
-    peerConnection.close();
-    peerConnection = null;
-  }
-  remoteStream = null;
-  notifyStreamChange();
-}
-
 export function useCall() {
   const dispatch = useAppDispatch();
   const callState = useAppSelector((state) => state.call);
 
-  // Get user media
+  // Get user media (with video fallback to audio-only if camera fails)
   const getMedia = useCallback(async (callType: CallType): Promise<MediaStream> => {
     console.log('[Call] Getting media for', callType);
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: callType === 'video',
-    });
-    localStream = stream;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: callType === 'video',
+      });
+    } catch (err) {
+      if (callType === 'video') {
+        console.warn('[Call] Camera access failed, falling back to audio-only:', err);
+        dispatch(addToast({ id: Date.now().toString(), message: 'Camera unavailable — connected with audio only. Another app may be using the camera.', type: 'warning' }));
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      } else {
+        throw err;
+      }
+    }
+    setLocalStream(stream);
     notifyStreamChange();
     return stream;
   }, []);
@@ -83,7 +65,7 @@ export function useCall() {
   const createPeerConnection = useCallback((targetUserId: string): RTCPeerConnection => {
     console.log('[Call] Creating peer connection');
     const pc = new RTCPeerConnection(ICE_SERVERS);
-    peerConnection = pc;
+    setPeerConnection(pc);
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -95,6 +77,22 @@ export function useCall() {
       console.log('[Call] ICE state:', pc.iceConnectionState);
       if (pc.iceConnectionState === 'connected') {
         dispatch(setConnected());
+        // Fallback: if remote stream wasn't set by ontrack, get it from receivers
+        if (!getRemoteStream()) {
+          const receivers = pc.getReceivers();
+          if (receivers.length > 0) {
+            const tracks = receivers.map((r) => r.track).filter(Boolean);
+            if (tracks.length > 0) {
+              console.log('[Call] Fallback: building remote stream from receivers');
+              const stream = new MediaStream(tracks);
+              setRemoteStream(stream);
+              notifyStreamChange();
+            }
+          }
+        } else {
+          // Notify again so video element gets a play() kick after connection
+          notifyStreamChange();
+        }
       } else if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
         dispatch(endCallAction());
         cleanupCall();
@@ -102,62 +100,35 @@ export function useCall() {
     };
 
     pc.ontrack = (event) => {
-      console.log('[Call] Remote track received');
-      remoteStream = event.streams[0];
+      console.log('[Call] Remote track received:', event.track.kind);
+      let stream: MediaStream;
+      if (event.streams && event.streams[0]) {
+        stream = event.streams[0];
+      } else {
+        // Fallback: create a new stream from the track
+        console.warn('[Call] ontrack: no streams, creating one from track');
+        const existing = getRemoteStream();
+        if (existing) {
+          existing.addTrack(event.track);
+          stream = existing;
+        } else {
+          stream = new MediaStream([event.track]);
+        }
+      }
+      setRemoteStream(stream);
       notifyStreamChange();
     };
 
     // Add local tracks
-    if (localStream) {
-      localStream.getTracks().forEach((track) => {
-        pc.addTrack(track, localStream!);
+    const ls = getLocalStream();
+    if (ls) {
+      ls.getTracks().forEach((track) => {
+        pc.addTrack(track, ls);
       });
     }
 
     return pc;
   }, [dispatch]);
-
-  // Register WebRTC signal handlers from socket — runs once on mount
-  useEffect(() => {
-    setCallSignalHandlers({
-      onOffer: async (callerId: string, offer: RTCSessionDescriptionInit) => {
-        console.log('[Call] Offer received from', callerId, '— buffering until user accepts');
-        pendingOffer = { callerId, offer };
-      },
-      onAnswer: async (answer: RTCSessionDescriptionInit) => {
-        console.log('[Call] Processing answer');
-        try {
-          if (peerConnection) {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-            // Flush any buffered ICE candidates
-            for (const candidate of pendingIceCandidates) {
-              await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-            }
-            pendingIceCandidates = [];
-          }
-        } catch (err) {
-          console.error('[Call] Error handling answer:', err);
-        }
-      },
-      onIceCandidate: async (candidate: RTCIceCandidateInit) => {
-        try {
-          if (peerConnection && peerConnection.remoteDescription) {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-          } else {
-            // Buffer if remote description not set yet
-            console.log('[Call] Buffering ICE candidate (no remote desc yet)');
-            pendingIceCandidates.push(candidate);
-          }
-        } catch (err) {
-          console.error('[Call] Error adding ICE candidate:', err);
-        }
-      },
-    });
-
-    return () => {
-      clearCallSignalHandlers();
-    };
-  }, []);
 
   // Initiate an outgoing call
   const initiateCall = useCallback(async (targetUserId: string, targetUserName: string, callType: CallType) => {
@@ -183,24 +154,32 @@ export function useCall() {
     console.log('[Call] Accepting call from', callState.remoteUserName);
     dispatch(setConnecting());
 
-    if (!pendingOffer) {
-      console.warn('[Call] No pending offer to process');
+    // Wait briefly for offer if not yet buffered (race condition)
+    let offer = getPendingOffer();
+    if (!offer) {
+      console.log('[Call] Offer not yet buffered, waiting...');
+      await new Promise((r) => setTimeout(r, 1000));
+      offer = getPendingOffer();
+    }
+    if (!offer) {
+      console.warn('[Call] No pending offer to process — cannot accept');
+      dispatch(endCallAction());
       return;
     }
 
-    const { callerId, offer } = pendingOffer;
-    pendingOffer = null;
+    const { callerId, offer: sdpOffer } = offer;
+    setPendingOffer(null);
 
     try {
       const callType = callState.callType || 'audio';
       await getMedia(callType);
       const pc = createPeerConnection(callerId);
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      await pc.setRemoteDescription(sdpOffer);
       // Flush any buffered ICE candidates
-      for (const candidate of pendingIceCandidates) {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      const candidates = clearPendingIceCandidates();
+      for (const candidate of candidates) {
+        await pc.addIceCandidate(candidate);
       }
-      pendingIceCandidates = [];
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       callEmitters.sendAnswer(callerId, answer);
@@ -214,7 +193,7 @@ export function useCall() {
   const rejectCall = useCallback(() => {
     if (!callState.remoteUserId) return;
     console.log('[Call] Rejecting call from', callState.remoteUserName);
-    pendingOffer = null;
+    setPendingOffer(null);
     callEmitters.rejectCall(callState.remoteUserId);
     dispatch(endCallAction());
     cleanupCall();
@@ -229,8 +208,9 @@ export function useCall() {
   }, [callState.remoteUserId, dispatch]);
 
   const handleToggleMute = useCallback(() => {
-    if (localStream) {
-      const audioTrack = localStream.getAudioTracks()[0];
+    const ls = getLocalStream();
+    if (ls) {
+      const audioTrack = ls.getAudioTracks()[0];
       if (audioTrack) {
         audioTrack.enabled = callState.isMuted; // will flip
       }
@@ -239,8 +219,9 @@ export function useCall() {
   }, [callState.isMuted, dispatch]);
 
   const handleToggleVideo = useCallback(() => {
-    if (localStream) {
-      const videoTrack = localStream.getVideoTracks()[0];
+    const ls = getLocalStream();
+    if (ls) {
+      const videoTrack = ls.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.enabled = callState.isVideoOff; // will flip
       }
@@ -257,10 +238,4 @@ export function useCall() {
     toggleMute: handleToggleMute,
     toggleVideo: handleToggleVideo,
   };
-}
-
-/** Subscribe to stream changes — returns unsubscribe function */
-export function onStreamChange(listener: StreamListener): () => void {
-  streamListeners.add(listener);
-  return () => streamListeners.delete(listener);
 }

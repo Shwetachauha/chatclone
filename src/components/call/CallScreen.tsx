@@ -34,17 +34,20 @@ export function CallScreen() {
         if (localVideoRef.current.srcObject !== ls) {
           localVideoRef.current.srcObject = ls;
         }
+        if (ls) localVideoRef.current.play().catch(() => {});
       }
       if (remoteVideoRef.current) {
         if (remoteVideoRef.current.srcObject !== rs) {
           remoteVideoRef.current.srcObject = rs;
         }
+        // Always call play — needed when a new video track arrives on existing stream
+        if (rs) remoteVideoRef.current.play().catch(() => {});
       }
-      // Always attach remote stream to audio element for voice playback
       if (remoteAudioRef.current) {
         if (remoteAudioRef.current.srcObject !== rs) {
           remoteAudioRef.current.srcObject = rs;
         }
+        if (rs) remoteAudioRef.current.play().catch(() => {});
       }
     }
     // Sync immediately
@@ -88,13 +91,14 @@ export function CallScreen() {
     >
       {/* Hidden audio element — plays remote audio for voice calls */}
       <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
-      {/* Remote video (full screen) */}
+      {/* Remote video (full screen) — muted because audio plays via separate <audio> element */}
       {isVideo && (
         <Box sx={{ position: 'absolute', inset: 0 }}>
           <video
             ref={remoteVideoRef}
             autoPlay
             playsInline
+            muted
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
         </Box>
