@@ -14,6 +14,7 @@ class SocketManager {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
   private currentChatId: string | null = null;
+  private joinedChatIds: string[] = [];
 
   connect(token: string): void {
     if (this.socket?.connected) {
@@ -52,7 +53,10 @@ class SocketManager {
       store.dispatch(setReconnecting(false));
       this.reconnectAttempts = 0;
 
-      // Rejoin current chat room on reconnect
+      // Rejoin all chat rooms on reconnect
+      if (this.joinedChatIds.length > 0) {
+        this.joinAllChats(this.joinedChatIds);
+      }
       if (this.currentChatId) {
         this.joinChat(this.currentChatId);
       }
@@ -117,10 +121,6 @@ class SocketManager {
       console.log('[Socket] joinChat failed - not connected, chatId:', chatId);
       return;
     }
-    // Leave previous chat
-    if (this.currentChatId && this.currentChatId !== chatId) {
-      this.leaveChat(this.currentChatId);
-    }
     this.currentChatId = chatId;
     console.log('[Socket] Joining chat:', chatId);
     this.socket.emit('join_chat', chatId);
@@ -131,6 +131,19 @@ class SocketManager {
     this.socket.emit('leave_chat', chatId);
     if (this.currentChatId === chatId) {
       this.currentChatId = null;
+    }
+  }
+
+  /** Join multiple chat rooms at once (for receiving messages on sidebar) */
+  joinAllChats(chatIds: string[]): void {
+    if (!this.socket?.connected) {
+      console.log('[Socket] joinAllChats failed - not connected');
+      return;
+    }
+    this.joinedChatIds = chatIds;
+    console.log('[Socket] Joining all chats:', chatIds.length);
+    for (const chatId of chatIds) {
+      this.socket.emit('join_chat', chatId);
     }
   }
 

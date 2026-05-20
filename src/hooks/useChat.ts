@@ -13,22 +13,17 @@ export function useChat() {
   const chats = useAppSelector(selectSortedChats);
   const activeChat = useAppSelector(selectActiveChat);
   const isLoading = useAppSelector((state) => state.chat.isLoading);
-  const { joinChat, leaveChat } = useSocket();
+  const { joinChat } = useSocket();
 
   const openChat = useCallback(
     (chat: Chat) => {
       if (activeChat?.id === chat.id) return;
 
-      // Leave previous chat room
-      if (activeChat) {
-        leaveChat(activeChat.id);
-      }
-
-      // Set active chat
+      // Set active chat (no need to leave other rooms — we stay joined to all for notifications)
       dispatch(setActiveChat(chat));
       dispatch(resetUnread(chat.id));
 
-      // Join new chat room
+      // Join chat room (ensures we're in it even if it's new)
       joinChat(chat.id);
 
       // Fetch messages if not loaded
@@ -38,15 +33,12 @@ export function useChat() {
       messageEmitters.markRead(chat.id);
       messageService.markRead(chat.id).catch(() => {});
     },
-    [activeChat, dispatch, joinChat, leaveChat]
+    [activeChat, dispatch, joinChat]
   );
 
   const closeChat = useCallback(() => {
-    if (activeChat) {
-      leaveChat(activeChat.id);
-    }
     dispatch(setActiveChat(null));
-  }, [activeChat, dispatch, leaveChat]);
+  }, [dispatch]);
 
   return {
     chats,

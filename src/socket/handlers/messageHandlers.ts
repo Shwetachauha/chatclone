@@ -146,6 +146,8 @@ export function registerMessageHandlers(socket: Socket): void {
       }
 
       store.dispatch(addChat(chat));
+      // Join the new chat room to receive future messages
+      socket.emit('join_chat', chat.id);
     }
 
     if (data.message) {
