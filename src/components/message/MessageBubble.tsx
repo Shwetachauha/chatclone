@@ -7,12 +7,11 @@ import { MessageStatus } from './MessageStatus';
 import { FilePreview } from './FilePreview';
 import { MessageActions } from './MessageActions';
 import { MessageReactions } from './MessageReactions';
-import { EditMessageDialog } from './EditMessageDialog';
 import { DeleteMessageDialog } from './DeleteMessageDialog';
 import { ForwardMessageDialog } from './ForwardMessageDialog';
 import { formatMessageTime } from '@/utils/helpers';
 import { useAppSelector, useAppDispatch } from '@/hooks/useAuth';
-import { addReaction, removeReaction, editMessageContent, deleteMessage } from '@/store/slices/messageSlice';
+import { addReaction, removeReaction, deleteMessage } from '@/store/slices/messageSlice';
 import { addMessage } from '@/store/slices/messageSlice';
 import { messageEmitters } from '@/socket/emitters/messageEmitters';
 import { messageService } from '@/services/messageService';
@@ -23,6 +22,7 @@ interface MessageBubbleProps {
   onRetry?: (messageId: string) => void;
   onDeleteFailed?: (messageId: string) => void;
   onReply?: (message: Message) => void;
+  onEdit?: (message: Message) => void;
 }
 
 export const MessageBubble = memo(function MessageBubble({
@@ -30,13 +30,13 @@ export const MessageBubble = memo(function MessageBubble({
   onRetry,
   onDeleteFailed,
   onReply,
+  onEdit,
 }: MessageBubbleProps) {
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector((state) => state.auth.user);
   const isMine = message.sender.id === currentUser?.id;
   const repliedMessage = useAppSelector(selectMessageById(message.chatId, message.replyTo));
 
-  const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [forwardOpen, setForwardOpen] = useState(false);
 
@@ -65,16 +65,6 @@ export const MessageBubble = memo(function MessageBubble({
     // Emit to server for real-time sync
     messageEmitters.reactMessage(message.id, emoji);
   }, [dispatch, currentUser, message.chatId, message.id, message.reactions]);
-
-  const handleEdit = useCallback((newContent: string) => {
-    dispatch(editMessageContent({
-      chatId: message.chatId,
-      messageId: message.id,
-      content: newContent,
-    }));
-    // Emit to server for real-time sync
-    messageEmitters.editMessage(message.id, newContent);
-  }, [dispatch, message.chatId, message.id]);
 
   const handleDelete = useCallback(async () => {
     dispatch(deleteMessage({ chatId: message.chatId, messageId: message.id }));
@@ -152,7 +142,7 @@ export const MessageBubble = memo(function MessageBubble({
           message={message}
           isMine={isMine}
           onReact={handleReact}
-          onEdit={() => setEditOpen(true)}
+          onEdit={() => onEdit?.(message)}
           onDelete={() => setDeleteOpen(true)}
           onForward={() => setForwardOpen(true)}
           onReply={() => onReply?.(message)}
@@ -290,12 +280,6 @@ export const MessageBubble = memo(function MessageBubble({
       </Box>
 
       {/* Dialogs */}
-      <EditMessageDialog
-        open={editOpen}
-        currentContent={message.content}
-        onClose={() => setEditOpen(false)}
-        onSave={handleEdit}
-      />
       <DeleteMessageDialog
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}

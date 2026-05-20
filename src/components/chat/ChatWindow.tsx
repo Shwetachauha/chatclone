@@ -21,6 +21,7 @@ export function ChatWindow({ chat, onBack }: ChatWindowProps) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [groupInfoOpen, setGroupInfoOpen] = useState(false);
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const currentUser = useAppSelector((state) => state.auth.user);
 
   if (!chat) {
@@ -56,12 +57,14 @@ export function ChatWindow({ chat, onBack }: ChatWindowProps) {
         onOpenProfile={() => setProfileOpen(true)}
         onOpenGroupInfo={() => setGroupInfoOpen(true)}
       />
-      <MessageList chatId={chat.id} onReply={setReplyToMessage} />
+      <MessageList chatId={chat.id} onReply={setReplyToMessage} onEdit={setEditingMessage} />
       <TypingIndicator chatId={chat.id} />
       <MessageInput
         chatId={chat.id}
         replyToMessage={replyToMessage}
         onCancelReply={() => setReplyToMessage(null)}
+        editingMessage={editingMessage}
+        onCancelEdit={() => setEditingMessage(null)}
       />
 
       {/* Side panels */}

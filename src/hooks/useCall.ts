@@ -31,7 +31,29 @@ const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    {
+      urls: 'turn:a.relay.metered.ca:80',
+      username: 'e8dd65b92af0d3e29db795ff',
+      credential: '5VoqgsxMgasTkRqY',
+    },
+    {
+      urls: 'turn:a.relay.metered.ca:80?transport=tcp',
+      username: 'e8dd65b92af0d3e29db795ff',
+      credential: '5VoqgsxMgasTkRqY',
+    },
+    {
+      urls: 'turn:a.relay.metered.ca:443',
+      username: 'e8dd65b92af0d3e29db795ff',
+      credential: '5VoqgsxMgasTkRqY',
+    },
+    {
+      urls: 'turns:a.relay.metered.ca:443?transport=tcp',
+      username: 'e8dd65b92af0d3e29db795ff',
+      credential: '5VoqgsxMgasTkRqY',
+    },
   ],
+  iceCandidatePoolSize: 10,
 };
 
 export function useCall() {
@@ -73,9 +95,18 @@ export function useCall() {
       }
     };
 
+    let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
     pc.oniceconnectionstatechange = () => {
       console.log('[Call] ICE state:', pc.iceConnectionState);
-      if (pc.iceConnectionState === 'connected') {
+
+      // Clear any pending disconnect timer on state change
+      if (disconnectTimer) {
+        clearTimeout(disconnectTimer);
+        disconnectTimer = null;
+      }
+
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
         dispatch(setConnected());
         // Fallback: if remote stream wasn't set by ontrack, get it from receivers
         if (!getRemoteStream()) {
@@ -93,9 +124,34 @@ export function useCall() {
           // Notify again so video element gets a play() kick after connection
           notifyStreamChange();
         }
-      } else if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-        dispatch(endCallAction());
-        cleanupCall();
+      } else if (pc.iceConnectionState === 'disconnected') {
+        // Disconnected is transient — wait before ending (it can recover)
+        console.warn('[Call] ICE disconnected — waiting 5s before ending...');
+        disconnectTimer = setTimeout(() => {
+          if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+            console.error('[Call] ICE did not recover, ending call');
+            dispatch(endCallAction());
+            cleanupCall();
+          }
+        }, 5000);
+      } else if (pc.iceConnectionState === 'failed') {
+        // Attempt ICE restart before giving up
+        console.warn('[Call] ICE failed — attempting ICE restart...');
+        try {
+          pc.restartIce();
+        } catch (e) {
+          console.error('[Call] ICE restart not supported, ending call');
+          dispatch(endCallAction());
+          cleanupCall();
+        }
+        // Give ICE restart 8 seconds to recover
+        disconnectTimer = setTimeout(() => {
+          if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+            console.error('[Call] ICE restart did not recover, ending call');
+            dispatch(endCallAction());
+            cleanupCall();
+          }
+        }, 8000);
       }
     };
 
@@ -154,15 +210,18 @@ export function useCall() {
     console.log('[Call] Accepting call from', callState.remoteUserName);
     dispatch(setConnecting());
 
-    // Wait briefly for offer if not yet buffered (race condition)
+    // Wait for offer with multiple retries (different machines have network latency)
     let offer = getPendingOffer();
     if (!offer) {
       console.log('[Call] Offer not yet buffered, waiting...');
-      await new Promise((r) => setTimeout(r, 1000));
-      offer = getPendingOffer();
+      for (let i = 0; i < 6; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        offer = getPendingOffer();
+        if (offer) break;
+      }
     }
     if (!offer) {
-      console.warn('[Call] No pending offer to process — cannot accept');
+      console.warn('[Call] No pending offer after 3s — cannot accept');
       dispatch(endCallAction());
       return;
     }
@@ -172,16 +231,45 @@ export function useCall() {
 
     try {
       const callType = callState.callType || 'audio';
-      await getMedia(callType);
+
+      // Get media — if video fails completely, fallback to audio to keep call alive
+      let stream: MediaStream | null = null;
+      try {
+        stream = await getMedia(callType);
+      } catch (mediaErr) {
+        console.error('[Call] getMedia failed for', callType, mediaErr);
+        if (callType === 'video') {
+          // Last resort: try audio-only so call doesn't drop
+          console.warn('[Call] Video media failed entirely, trying audio-only as last resort');
+          try {
+            stream = await getMedia('audio');
+          } catch (audioErr) {
+            console.error('[Call] Even audio failed:', audioErr);
+            throw audioErr;
+          }
+        } else {
+          throw mediaErr;
+        }
+      }
+
+      console.log('[Call] Media acquired, creating peer connection...');
       const pc = createPeerConnection(callerId);
+
+      console.log('[Call] Setting remote description (offer)...');
       await pc.setRemoteDescription(sdpOffer);
+
       // Flush any buffered ICE candidates
       const candidates = clearPendingIceCandidates();
+      console.log('[Call] Flushing', candidates.length, 'buffered ICE candidates');
       for (const candidate of candidates) {
         await pc.addIceCandidate(candidate);
       }
+
+      console.log('[Call] Creating answer...');
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
+
+      console.log('[Call] Sending answer to caller');
       callEmitters.sendAnswer(callerId, answer);
     } catch (err) {
       console.error('[Call] Error accepting call:', err);

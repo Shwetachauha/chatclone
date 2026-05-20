@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, KeyboardEvent } from 'react';
+import { useState, useRef, useCallback, useEffect, KeyboardEvent } from 'react';
 import {
   Box,
   TextField,
@@ -18,6 +18,7 @@ import {
   EmojiEmotions,
   CameraAlt,
   Reply,
+  Edit,
 } from '@mui/icons-material';
 import { useTyping } from '@/hooks/useTyping';
 import { useFileUpload } from '@/hooks/useFileUpload';
@@ -25,14 +26,19 @@ import { useMessages } from '@/hooks/useMessages';
 import { sanitizeInput } from '@/utils/sanitize';
 import { CameraCaptureDialog } from './CameraCaptureDialog';
 import { Message } from '@/types';
+import { useAppDispatch } from '@/hooks/useAuth';
+import { editMessageContent } from '@/store/slices/messageSlice';
+import { messageEmitters } from '@/socket/emitters/messageEmitters';
 
 interface MessageInputProps {
   chatId: string;
   replyToMessage?: Message | null;
   onCancelReply?: () => void;
+  editingMessage?: Message | null;
+  onCancelEdit?: () => void;
 }
 
-export function MessageInput({ chatId, replyToMessage, onCancelReply }: MessageInputProps) {
+export function MessageInput({ chatId, replyToMessage, onCancelReply, editingMessage, onCancelEdit }: MessageInputProps) {
   const [content, setContent] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -40,9 +46,19 @@ export function MessageInput({ chatId, replyToMessage, onCancelReply }: MessageI
   const [cameraOpen, setCameraOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const { startTyping, stopTyping } = useTyping(chatId);
   const { isUploading, progress, error: uploadError, resetUpload } = useFileUpload();
   const { sendMessage, uploadProgress, isUploading: isSendingFile } = useMessages(chatId);
+  const appDispatch = useAppDispatch();
+
+  // When editingMessage changes, populate the input (WhatsApp style)
+  useEffect(() => {
+    if (editingMessage) {
+      setContent(editingMessage.content);
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [editingMessage]);
 
   const EMOJI_LIST = [
     '😀', '😂', '😍', '🥰', '😎', '🤔', '😮', '😢',
@@ -60,6 +76,21 @@ export function MessageInput({ chatId, replyToMessage, onCancelReply }: MessageI
   const handleSend = useCallback(async () => {
     const trimmedContent = content.trim();
 
+    // Handle edit mode
+    if (editingMessage) {
+      if (trimmedContent && trimmedContent !== editingMessage.content) {
+        appDispatch(editMessageContent({
+          chatId: editingMessage.chatId,
+          messageId: editingMessage.id,
+          content: trimmedContent,
+        }));
+        messageEmitters.editMessage(editingMessage.id, trimmedContent);
+      }
+      setContent('');
+      onCancelEdit?.();
+      return;
+    }
+
     if (!trimmedContent && !selectedFile) return;
 
     stopTyping();
@@ -75,12 +106,17 @@ export function MessageInput({ chatId, replyToMessage, onCancelReply }: MessageI
 
     setContent('');
     onCancelReply?.();
-  }, [content, selectedFile, stopTyping, sendMessage, replyToMessage, onCancelReply]);
+  }, [content, selectedFile, stopTyping, sendMessage, replyToMessage, onCancelReply, editingMessage, onCancelEdit, appDispatch]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+    if (e.key === 'Escape' && editingMessage) {
+      e.preventDefault();
+      setContent('');
+      onCancelEdit?.();
     }
   };
 
@@ -117,7 +153,7 @@ export function MessageInput({ chatId, replyToMessage, onCancelReply }: MessageI
   return (
     <Box sx={{ borderTop: '1px solid rgba(200,180,255,0.2)', bgcolor: '#e8dff5' }}>
       {/* Reply preview */}
-      {replyToMessage && (
+      {replyToMessage && !editingMessage && (
         <Box px={2} pt={1}>
           <Paper
             variant="outlined"
@@ -143,6 +179,38 @@ export function MessageInput({ chatId, replyToMessage, onCancelReply }: MessageI
               <Close fontSize="small" />
             </IconButton>
           </Paper>
+        </Box>
+      )}
+
+      {/* Editing banner (WhatsApp style) */}
+      {editingMessage && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            px: 2,
+            py: 0.8,
+            bgcolor: 'rgba(102,126,234,0.06)',
+            borderBottom: '1px solid rgba(102,126,234,0.1)',
+          }}
+        >
+          <Edit sx={{ fontSize: 15, color: '#667eea' }} />
+          <Box flex={1} overflow="hidden">
+            <Typography variant="caption" sx={{ color: '#667eea', fontWeight: 600, fontSize: '0.72rem' }}>
+              Edit message
+            </Typography>
+            <Typography variant="body2" noWrap sx={{ color: 'rgba(0,0,0,0.5)', fontSize: '0.78rem', lineHeight: 1.3 }}>
+              {editingMessage.content}
+            </Typography>
+          </Box>
+          <IconButton
+            size="small"
+            onClick={() => { setContent(''); onCancelEdit?.(); }}
+            sx={{ color: 'rgba(0,0,0,0.4)', p: 0.3, '&:hover': { color: '#667eea' } }}
+          >
+            <Close sx={{ fontSize: 16 }} />
+          </IconButton>
         </Box>
       )}
 
@@ -275,6 +343,7 @@ export function MessageInput({ chatId, replyToMessage, onCancelReply }: MessageI
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           disabled={isUploading}
+          inputRef={inputRef}
           sx={{
             '& .MuiOutlinedInput-root': {
               borderRadius: '20px',
@@ -291,14 +360,14 @@ export function MessageInput({ chatId, replyToMessage, onCancelReply }: MessageI
 
         <IconButton
           onClick={handleSend}
-          disabled={(!content.trim() && !selectedFile) || isUploading}
+          disabled={!content.trim() && !selectedFile && !editingMessage}
           sx={{
             width: 38,
             height: 38,
-            background: (!content.trim() && !selectedFile) || isUploading
+            background: !content.trim() && !selectedFile
               ? 'transparent'
               : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            color: (!content.trim() && !selectedFile) || isUploading ? 'rgba(255,255,255,0.3)' : 'white',
+            color: !content.trim() && !selectedFile ? 'rgba(255,255,255,0.3)' : 'white',
             '&:hover': {
               background: 'linear-gradient(135deg, #5a6fe0 0%, #6a3d96 100%)',
               transform: 'scale(1.05)',
