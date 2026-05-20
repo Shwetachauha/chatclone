@@ -85,9 +85,9 @@ export const createPrivateChat = createAsyncThunk(
 
 export const createGroupChat = createAsyncThunk(
   'chat/createGroup',
-  async (data: { groupName: string; members: string[]; groupAvatar?: string }, { rejectWithValue }) => {
+  async (data: { groupName: string; members: string[]; groupAvatar?: string; description?: string }, { rejectWithValue }) => {
     try {
-      return await chatService.createGroupChat(data.groupName, data.members, data.groupAvatar);
+      return await chatService.createGroupChat(data.groupName, data.members, data.groupAvatar, data.description);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } } };
       return rejectWithValue(err.response?.data?.message || 'Failed to create group');

@@ -78,9 +78,9 @@ export const chatService = {
     return normalizeChat(response.data.chat as Record<string, unknown>);
   },
 
-  async createGroupChat(groupName: string, members: string[], groupAvatar?: string): Promise<Chat> {
-    console.log('[ChatService] createGroupChat request:', { groupName, members, groupAvatar });
-    const response = await api.post<ChatResponse>('/chats/group', { groupName, members, groupAvatar });
+  async createGroupChat(groupName: string, members: string[], groupAvatar?: string, description?: string): Promise<Chat> {
+    console.log('[ChatService] createGroupChat request:', { groupName, members, groupAvatar, description });
+    const response = await api.post<ChatResponse>('/chats/group', { groupName, members, groupAvatar, ...(description && { description }) });
     console.log('[ChatService] createGroupChat response:', response.data.chat);
     return normalizeChat(response.data.chat as Record<string, unknown>);
   },

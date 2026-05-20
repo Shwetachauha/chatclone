@@ -30,6 +30,7 @@ export function CreateGroupDialog() {
   const dispatch = useAppDispatch();
   const isOpen = useAppSelector((state) => state.ui.createGroupDialogOpen);
   const [groupName, setGroupName] = useState('');
+  const [groupDescription, setGroupDescription] = useState('');
   const [groupIcon, setGroupIcon] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -74,6 +75,7 @@ export function CreateGroupDialog() {
   const handleClose = () => {
     dispatch(setCreateGroupDialogOpen(false));
     setGroupName('');
+    setGroupDescription('');
     setGroupIcon(null);
     setSearchQuery('');
     setSearchResults([]);
@@ -91,6 +93,7 @@ export function CreateGroupDialog() {
       groupName: groupName.trim(),
       members: selectedUsers.map((u) => u.id),
       ...(groupIcon && { groupAvatar: groupIcon }),
+      ...(groupDescription.trim() && { description: groupDescription.trim() }),
     }));
     handleClose();
   };
@@ -101,6 +104,9 @@ export function CreateGroupDialog() {
         ? prev.filter((u) => u.id !== user.id)
         : [...prev, user]
     );
+    // Clear search field after selecting a user
+    setSearchQuery('');
+    setSearchResults([]);
   };
 
   return (
@@ -142,6 +148,16 @@ export function CreateGroupDialog() {
             onChange={(e) => setGroupName(e.target.value)}
             fullWidth
             required
+          />
+
+          <TextField
+            label="Group Description"
+            value={groupDescription}
+            onChange={(e) => setGroupDescription(e.target.value)}
+            fullWidth
+            multiline
+            rows={2}
+            placeholder="What's this group about?"
           />
 
           <TextField
