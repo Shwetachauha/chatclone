@@ -29,6 +29,9 @@ import { Message } from '@/types';
 import { useAppDispatch } from '@/hooks/useAuth';
 import { editMessageContent } from '@/store/slices/messageSlice';
 import { messageEmitters } from '@/socket/emitters/messageEmitters';
+import { addToast } from '@/store/slices/uiSlice';
+
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024; // 10MB
 
 interface MessageInputProps {
   chatId: string;
@@ -128,6 +131,18 @@ export function MessageInput({ chatId, replyToMessage, onCancelReply, editingMes
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, type: 'file' | 'image') => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Validate file size (10MB max)
+    if (file.size > MAX_UPLOAD_SIZE) {
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+      appDispatch(addToast({
+        id: Date.now().toString(),
+        message: `File too large (${sizeMB}MB). Maximum allowed size is 10MB.`,
+        type: 'error',
+      }));
+      e.target.value = '';
+      return;
+    }
 
     setSelectedFile(file);
     resetUpload();
