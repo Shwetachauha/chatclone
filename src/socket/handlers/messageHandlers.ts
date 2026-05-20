@@ -117,6 +117,7 @@ export function registerMessageHandlers(socket: Socket): void {
     console.log('[Socket] new_chat:', data);
     const state = store.getState();
     const currentUserId = state.auth.user?.id;
+    const activeChat = state.chat.activeChat;
 
     if (data.chat) {
       const chat = normalizeChat(data.chat);
@@ -125,6 +126,25 @@ export function registerMessageHandlers(socket: Socket): void {
         const other = chat.members.find((m) => m.id !== currentUserId) || chat.members[0];
         chat.chatWith = other;
       }
+
+      // Set unread count based on whether this chat is currently active
+      if (activeChat?.id !== chat.id) {
+        chat.unreadCount = 1;
+      }
+
+      // Set latestMessage from the incoming message
+      if (data.message) {
+        const rawSender = data.message.sender as Record<string, unknown> | undefined;
+        chat.latestMessage = {
+          content: data.message.content as string,
+          type: (data.message.type as string || 'TEXT') as 'TEXT' | 'IMAGE' | 'FILE',
+          sender: rawSender
+            ? { name: rawSender.name as string, avatar: rawSender.avatar as string | undefined }
+            : { name: '' },
+          createdAt: data.message.createdAt as string || new Date().toISOString(),
+        };
+      }
+
       store.dispatch(addChat(chat));
     }
 
@@ -141,7 +161,6 @@ export function registerMessageHandlers(socket: Socket): void {
 
       if (message.chatId) {
         store.dispatch(addMessage(message));
-        store.dispatch(incrementUnread(message.chatId));
       }
     }
   });

@@ -82,9 +82,14 @@ export const ChatList = memo(function ChatList() {
                 />
               </IconButton>
             </Tooltip>
-            <Typography variant="h5" fontWeight={800} sx={{ color: '#2d1b69', letterSpacing: '-0.03em' }}>
-              Chats
-            </Typography>
+            <Box>
+              <Typography variant="h5" fontWeight={800} sx={{ color: '#2d1b69', letterSpacing: '-0.03em', lineHeight: 1.2 }}>
+                Chats
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#7c5cbf', fontSize: 11 }}>
+                {currentUser?.name}
+              </Typography>
+            </Box>
           </Box>
           <Box display="flex" gap={0.5}>
             <Tooltip title="Search Users">
