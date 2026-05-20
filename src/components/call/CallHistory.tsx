@@ -83,7 +83,7 @@ export const CallHistory = memo(function CallHistory() {
 
 function CallLogItem({ log, currentUserId }: { log: CallLog; currentUserId: string }) {
   const dispatch = useAppDispatch();
-  const isCaller = log.callerId === currentUserId;
+  const isCaller = (log.callerId || log.caller?.id) === currentUserId;
   const otherUser = isCaller ? log.receiver : log.caller;
   const [hovered, setHovered] = useState(false);
 
