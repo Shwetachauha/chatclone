@@ -135,11 +135,16 @@ const authSlice = createSlice({
         state.isAuthenticated = true;
         saveAuthToStorage(state.user, action.payload.accessToken);
       })
-      .addCase(refreshToken.rejected, (state) => {
-        state.user = null;
-        state.accessToken = null;
-        state.isAuthenticated = false;
-        saveAuthToStorage(null, null);
+      .addCase(refreshToken.rejected, (state, action) => {
+        // Only clear auth if the error indicates token is truly invalid
+        // Network errors should NOT log out the user
+        const payload = action.payload as string | undefined;
+        if (payload?.includes('401') || payload?.includes('403') || payload?.includes('expired') || payload?.includes('invalid')) {
+          state.user = null;
+          state.accessToken = null;
+          state.isAuthenticated = false;
+          saveAuthToStorage(null, null);
+        }
       })
       .addCase(logout.fulfilled, (state) => {
         state.user = null;
