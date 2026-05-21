@@ -3,7 +3,7 @@ import { useAppSelector } from './useAuth';
 import { typingEmitters } from '@/socket/emitters/typingEmitters';
 import { selectTypingUsersForChat } from '@/store/selectors/presenceSelectors';
 
-const TYPING_DEBOUNCE_MS = 2000;
+const TYPING_DEBOUNCE_MS = 3000;
 
 export function useTyping(chatId: string) {
   const typingUsers = useAppSelector(selectTypingUsersForChat(chatId));

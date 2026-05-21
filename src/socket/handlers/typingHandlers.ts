@@ -4,19 +4,40 @@ import { ServerEvent, TypingEvent, ReadReceiptEvent } from '@/types';
 import { setUserTyping, removeUserTyping } from '@/store/slices/typingSlice';
 import { updateReadReceipt } from '@/store/slices/messageSlice';
 
+// Auto-clear typing after timeout if stop_typing is missed
+const typingTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+const TYPING_TIMEOUT = 4000;
+
 export function registerTypingHandlers(socket: Socket): void {
   socket.on(ServerEvent.TYPING, (event: TypingEvent) => {
     const state = store.getState();
-    // Only handle typing from other users
     if (event.userId !== state.auth.user?.id) {
       store.dispatch(setUserTyping({
         chatId: event.chatId,
         userId: event.userId,
       }));
+
+      // Reset auto-clear timer
+      const key = `${event.chatId}:${event.userId}`;
+      if (typingTimers[key]) {
+        clearTimeout(typingTimers[key]);
+      }
+      typingTimers[key] = setTimeout(() => {
+        store.dispatch(removeUserTyping({
+          chatId: event.chatId,
+          userId: event.userId,
+        }));
+        delete typingTimers[key];
+      }, TYPING_TIMEOUT);
     }
   });
 
   socket.on(ServerEvent.STOP_TYPING, (event: TypingEvent) => {
+    const key = `${event.chatId}:${event.userId}`;
+    if (typingTimers[key]) {
+      clearTimeout(typingTimers[key]);
+      delete typingTimers[key];
+    }
     store.dispatch(removeUserTyping({
       chatId: event.chatId,
       userId: event.userId,
