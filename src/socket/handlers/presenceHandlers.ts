@@ -29,6 +29,7 @@ export function registerPresenceHandlers(socket: Socket): void {
     const userId = (raw.id || raw._id) as string;
     const name = raw.name as string;
     const avatar = raw.avatar as string | undefined;
+    const bio = raw.bio as string | undefined;
 
     const state = store.getState();
     const currentUser = state.auth.user;
@@ -39,6 +40,6 @@ export function registerPresenceHandlers(socket: Socket): void {
     }
 
     // Update user info in all chats (sidebar, members, chatWith)
-    store.dispatch(updateUserInChats({ userId, name, avatar }));
+    store.dispatch(updateUserInChats({ userId, name, avatar, bio }));
   });
 }

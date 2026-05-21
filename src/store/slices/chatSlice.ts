@@ -181,19 +181,21 @@ const chatSlice = createSlice({
         }
       }
     },
-    updateUserInChats(state, action: PayloadAction<{ userId: string; name: string; avatar?: string }>) {
-      const { userId, name, avatar } = action.payload;
+    updateUserInChats(state, action: PayloadAction<{ userId: string; name: string; avatar?: string; bio?: string }>) {
+      const { userId, name, avatar, bio } = action.payload;
       for (const chat of state.chats) {
         // Update chatWith
         if (chat.chatWith?.id === userId) {
           chat.chatWith.name = name;
           if (avatar !== undefined) chat.chatWith.avatar = avatar;
+          if (bio !== undefined) chat.chatWith.bio = bio;
         }
         // Update members
         const member = chat.members.find((m) => m.id === userId);
         if (member) {
           member.name = name;
           if (avatar !== undefined) member.avatar = avatar;
+          if (bio !== undefined) member.bio = bio;
         }
       }
       // Update active chat
@@ -201,11 +203,13 @@ const chatSlice = createSlice({
         if (state.activeChat.chatWith?.id === userId) {
           state.activeChat.chatWith.name = name;
           if (avatar !== undefined) state.activeChat.chatWith.avatar = avatar;
+          if (bio !== undefined) state.activeChat.chatWith.bio = bio;
         }
         const activeMember = state.activeChat.members.find((m) => m.id === userId);
         if (activeMember) {
           activeMember.name = name;
           if (avatar !== undefined) activeMember.avatar = avatar;
+          if (bio !== undefined) activeMember.bio = bio;
         }
       }
     },

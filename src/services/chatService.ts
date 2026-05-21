@@ -16,6 +16,7 @@ function normalizeMember(raw: Record<string, unknown>): ChatMember {
     name: raw.name as string,
     email: raw.email as string | undefined,
     avatar: raw.avatar as string | undefined,
+    bio: raw.bio as string | undefined,
     isOnline: raw.isOnline as boolean | undefined,
     lastSeen: raw.lastSeen as string | null | undefined,
   };
