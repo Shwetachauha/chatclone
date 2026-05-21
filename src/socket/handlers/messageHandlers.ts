@@ -70,27 +70,38 @@ export function registerMessageHandlers(socket: Socket): void {
     console.log('[Socket] message_reaction:', data);
     const raw = data.message;
     if (!raw) return;
-    const rawSender = raw.sender as Record<string, unknown> | undefined;
     const chatId = (raw.chatId || raw.chat) as string;
-    const message: Message = {
-      ...(raw as unknown as Message),
-      id: (raw.id || raw._id) as string,
-      chatId,
-      sender: rawSender
-        ? { id: (rawSender.id || rawSender._id) as string, name: rawSender.name as string, avatar: rawSender.avatar as string | undefined }
-        : (raw.sender as unknown as Message['sender']),
-      reactions: Array.isArray(raw.reactions)
-        ? (raw.reactions as Array<Record<string, unknown>>).map((r) => {
-            const user = r.user as Record<string, unknown> | undefined;
-            return {
-              emoji: r.emoji as string,
-              userId: user ? (user.id || user._id) as string : r.userId as string,
-              username: user ? user.name as string : r.username as string,
-            };
-          })
-        : [],
-    };
-    if (chatId) {
+    const messageId = (raw.id || raw._id) as string;
+    if (!chatId || !messageId) return;
+
+    const reactions = Array.isArray(raw.reactions)
+      ? (raw.reactions as Array<Record<string, unknown>>).map((r) => {
+          const user = r.user as Record<string, unknown> | undefined;
+          return {
+            emoji: r.emoji as string,
+            userId: user ? (user.id || user._id) as string : r.userId as string,
+            username: user ? user.name as string : r.username as string,
+          };
+        })
+      : [];
+
+    // Get existing message from store and merge reactions
+    const state = store.getState();
+    const existing = state.messages.messagesByChatId[chatId]?.entities[messageId];
+    if (existing) {
+      store.dispatch(updateMessage({ chatId, message: { ...existing, reactions } }));
+    } else {
+      // Message not in store yet — build from raw
+      const rawSender = raw.sender as Record<string, unknown> | undefined;
+      const message: Message = {
+        ...(raw as unknown as Message),
+        id: messageId,
+        chatId,
+        sender: rawSender
+          ? { id: (rawSender.id || rawSender._id) as string, name: rawSender.name as string, avatar: rawSender.avatar as string | undefined }
+          : (raw.sender as unknown as Message['sender']),
+        reactions,
+      };
       store.dispatch(updateMessage({ chatId, message }));
     }
   });

@@ -35,6 +35,7 @@ export const MessageActions = memo(function MessageActions({
   onReply: _onReply,
 }: MessageActionsProps) {
   const [emojiAnchor, setEmojiAnchor] = useState<HTMLButtonElement | null>(null);
+  const [emojiPosition, setEmojiPosition] = useState<{ top: number; left: number } | null>(null);
   const user = useAppSelector((state) => state.auth.user);
 
   const FULL_EMOJI_LIST = [
@@ -86,7 +87,7 @@ export const MessageActions = memo(function MessageActions({
         ))}
 
         <Tooltip title="More reactions">
-          <IconButton size="small" onClick={(e) => setEmojiAnchor(e.currentTarget)} sx={{ p: 0.3, color: 'rgba(255,255,255,0.6)' }}>
+          <IconButton size="small" onClick={(e) => { const rect = e.currentTarget.getBoundingClientRect(); setEmojiPosition({ top: rect.top, left: rect.left + rect.width / 2 }); setEmojiAnchor(e.currentTarget); }} sx={{ p: 0.3, color: 'rgba(255,255,255,0.6)' }}>
             <EmojiEmotions sx={{ fontSize: 15 }} />
           </IconButton>
         </Tooltip>
@@ -126,8 +127,9 @@ export const MessageActions = memo(function MessageActions({
       {/* Full emoji picker popover */}
       <Popover
         open={Boolean(emojiAnchor)}
-        anchorEl={emojiAnchor}
-        onClose={() => setEmojiAnchor(null)}
+        anchorReference="anchorPosition"
+        anchorPosition={emojiPosition || undefined}
+        onClose={() => { setEmojiAnchor(null); setEmojiPosition(null); }}
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
         transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
@@ -135,7 +137,7 @@ export const MessageActions = memo(function MessageActions({
           {FULL_EMOJI_LIST.map((emoji) => (
             <Box
               key={emoji}
-              onClick={() => { onReact(emoji); setEmojiAnchor(null); }}
+              onClick={() => { onReact(emoji); setEmojiAnchor(null); setEmojiPosition(null); }}
               sx={{
                 fontSize: 22,
                 cursor: 'pointer',
