@@ -145,6 +145,17 @@ const chatSlice = createSlice({
         state.activeChat = { ...state.activeChat, ...action.payload };
       }
     },
+    upsertChat(state, action: PayloadAction<Chat>) {
+      const index = state.chats.findIndex((c) => c.id === action.payload.id);
+      if (index !== -1) {
+        state.chats[index] = { ...state.chats[index], ...action.payload };
+      } else {
+        state.chats.unshift(action.payload);
+      }
+      if (state.activeChat?.id === action.payload.id) {
+        state.activeChat = { ...state.activeChat, ...action.payload };
+      }
+    },
     updateMemberOnline(state, action: PayloadAction<{ userId: string; isOnline: boolean; lastSeen?: string | null }>) {
       const { userId, isOnline, lastSeen } = action.payload;
       for (const chat of state.chats) {
@@ -244,6 +255,7 @@ export const {
   updateUserInChats,
   sortChats,
   updateChat,
+  upsertChat,
   removeChat,
 } = chatSlice.actions;
 export default chatSlice.reducer;

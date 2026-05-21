@@ -58,6 +58,7 @@ export function normalizeChat(raw: Record<string, unknown>): Chat {
     isGroupChat,
     chatWith,
     groupName: (raw.groupName || null) as string | null,
+    groupDescription: (raw.groupDescription || '') as string,
     groupAvatar: raw.groupAvatar as string | undefined,
     groupAdmin,
     members,
@@ -93,5 +94,9 @@ export const chatService = {
   async removeGroupMember(chatId: string, userId: string): Promise<Chat> {
     const response = await api.put<ChatResponse>('/chats/group/remove', { chatId, userId });
     return normalizeChat(response.data.chat as Record<string, unknown>);
+  },
+
+  async deleteChat(chatId: string): Promise<void> {
+    await api.delete(`/chats/${chatId}`);
   },
 };

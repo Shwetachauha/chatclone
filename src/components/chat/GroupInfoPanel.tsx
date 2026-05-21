@@ -24,7 +24,7 @@ import { groupEmitters } from '@/socket/emitters/groupEmitters';
 import { uploadService } from '@/services/uploadService';
 import { chatService } from '@/services/chatService';
 import { userService } from '@/services/userService';
-import { updateChat } from '@/store/slices/chatSlice';
+import { updateChat, upsertChat } from '@/store/slices/chatSlice';
 
 interface GroupInfoPanelProps {
   open: boolean;
@@ -35,6 +35,7 @@ interface GroupInfoPanelProps {
 export function GroupInfoPanel({ open, chat, onClose }: GroupInfoPanelProps) {
   const [editing, setEditing] = useState(false);
   const [newName, setNewName] = useState(chat?.groupName || '');
+  const [newDesc, setNewDesc] = useState(chat?.groupDescription || '');
   const [isUploading, setIsUploading] = useState(false);
   const [addingMember, setAddingMember] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -50,9 +51,19 @@ export function GroupInfoPanel({ open, chat, onClose }: GroupInfoPanelProps) {
 
   const isAdmin = chat.groupAdmin?.id === currentUser?.id;
 
-  const handleSaveName = () => {
+  const handleSaveGroupInfo = () => {
+    const data: { groupName?: string; groupDescription?: string } = {};
     if (newName.trim() && newName.trim() !== chat.groupName) {
-      groupEmitters.updateGroup(chat.id, { groupName: newName.trim() });
+      data.groupName = newName.trim();
+    }
+    const trimmedDesc = newDesc.trim();
+    if (trimmedDesc !== (chat.groupDescription || '')) {
+      data.groupDescription = trimmedDesc;
+    }
+    if (Object.keys(data).length > 0) {
+      groupEmitters.updateGroup(chat.id, data);
+      // Optimistically update the UI
+      dispatch(updateChat({ ...chat, ...data }));
     }
     setEditing(false);
   };
@@ -93,8 +104,7 @@ export function GroupInfoPanel({ open, chat, onClose }: GroupInfoPanelProps) {
   const handleAddMember = async (userId: string) => {
     try {
       const updatedChat = await chatService.addGroupMember(chat.id, userId);
-      dispatch(updateChat(updatedChat));
-      // Remove from search results
+      dispatch(upsertChat(updatedChat));
       setSearchResults((prev) => prev.filter((u) => u.id !== userId));
     } catch (err) {
       console.error('[GroupInfo] Add member failed:', err);
@@ -105,7 +115,7 @@ export function GroupInfoPanel({ open, chat, onClose }: GroupInfoPanelProps) {
     setRemovingId(userId);
     try {
       const updatedChat = await chatService.removeGroupMember(chat.id, userId);
-      dispatch(updateChat(updatedChat));
+      dispatch(upsertChat(updatedChat));
     } catch (err) {
       console.error('[GroupInfo] Remove member failed:', err);
     }
@@ -190,36 +200,56 @@ export function GroupInfoPanel({ open, chat, onClose }: GroupInfoPanelProps) {
         <input ref={fileInputRef} type="file" hidden accept="image/*" onChange={handleAvatarUpload} />
 
         {editing ? (
-          <Box display="flex" gap={1} alignItems="center" mt={2}>
+          <Box mt={2} sx={{ width: '100%', maxWidth: 260 }}>
             <TextField
               size="small"
+              fullWidth
+              label="Group Name"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               autoFocus
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+              sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
             />
-            <Button size="small" variant="contained" onClick={handleSaveName} sx={{ borderRadius: 2, textTransform: 'none' }}>
-              Save
-            </Button>
-            <Button size="small" onClick={() => setEditing(false)} sx={{ borderRadius: 2, textTransform: 'none' }}>
-              Cancel
-            </Button>
+            <TextField
+              size="small"
+              fullWidth
+              multiline
+              maxRows={3}
+              label="Description"
+              placeholder="Add group description..."
+              value={newDesc}
+              onChange={(e) => setNewDesc(e.target.value)}
+              sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { borderRadius: 2, fontSize: '0.85rem' } }}
+            />
+            <Box display="flex" gap={1} justifyContent="center">
+              <Button size="small" variant="contained" onClick={handleSaveGroupInfo} sx={{ borderRadius: 2, textTransform: 'none', bgcolor: '#667eea', '&:hover': { bgcolor: '#5a6fd6' } }}>
+                Save
+              </Button>
+              <Button size="small" onClick={() => setEditing(false)} sx={{ borderRadius: 2, textTransform: 'none' }}>
+                Cancel
+              </Button>
+            </Box>
           </Box>
         ) : (
-          <Box display="flex" alignItems="center" gap={0.5} mt={1.5}>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a1a2e' }}>
-              {chat.groupName}
+          <>
+            <Box display="flex" alignItems="center" gap={0.5} mt={1.5}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a1a2e' }}>
+                {chat.groupName}
+              </Typography>
+              {isAdmin && (
+                <IconButton
+                  size="small"
+                  onClick={() => { setNewName(chat.groupName || ''); setNewDesc(chat.groupDescription || ''); setEditing(true); }}
+                  sx={{ color: '#667eea' }}
+                >
+                  <Edit fontSize="small" />
+                </IconButton>
+              )}
+            </Box>
+            <Typography variant="body2" sx={{ color: '#8e8ea0', mt: 0.5, fontSize: '0.82rem', lineHeight: 1.4, maxWidth: 260, textAlign: 'center' }}>
+              {chat.groupDescription || 'No description set'}
             </Typography>
-            {isAdmin && (
-              <IconButton
-                size="small"
-                onClick={() => { setNewName(chat.groupName || ''); setEditing(true); }}
-                sx={{ color: '#667eea' }}
-              >
-                <Edit fontSize="small" />
-              </IconButton>
-            )}
-          </Box>
+          </>
         )}
 
         <Typography variant="caption" sx={{ color: '#8e8ea0', mt: 0.3, fontSize: '0.78rem' }}>
@@ -242,25 +272,7 @@ export function GroupInfoPanel({ open, chat, onClose }: GroupInfoPanelProps) {
         )}
       </Box>
 
-      {/* Description section */}
-      <Box
-        sx={{
-          mx: 2.5,
-          mb: 1.5,
-          bgcolor: 'white',
-          borderRadius: 2.5,
-          boxShadow: '0 2px 10px rgba(0,0,0,0.04)',
-          px: 2.5,
-          py: 2,
-        }}
-      >
-        <Typography variant="caption" sx={{ fontWeight: 700, color: '#1a1a2e', textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.7rem' }}>
-          Description
-        </Typography>
-        <Typography variant="body2" sx={{ color: '#8e8ea0', mt: 0.5, fontSize: '0.82rem', lineHeight: 1.5 }}>
-          {(chat as any).description || 'No description set'}
-        </Typography>
-      </Box>
+
 
       {/* Members section */}
       <Box

@@ -9,6 +9,7 @@ import { useAppSelector, useAppDispatch } from '@/hooks/useAuth';
 import { selectIsUserOnline } from '@/store/selectors/presenceSelectors';
 import { removeChat } from '@/store/slices/chatSlice';
 import { clearChatMessages } from '@/store/slices/messageSlice';
+import { chatService } from '@/services/chatService';
 import { DeleteChatDialog } from './DeleteChatDialog';
 
 const MotionListItem = motion.create(ListItemButton as any);
@@ -41,11 +42,16 @@ export const ChatListItem = memo(function ChatListItem({
     setContextMenu({ mouseX: e.clientX, mouseY: e.clientY });
   };
 
-  const handleDeleteChat = () => {
+  const handleDeleteChat = async () => {
     dispatch(removeChat(chat.id));
     dispatch(clearChatMessages(chat.id));
     setDeleteOpen(false);
     setContextMenu(null);
+    try {
+      await chatService.deleteChat(chat.id);
+    } catch (err) {
+      console.error('[ChatListItem] Delete chat API failed:', err);
+    }
   };
 
   return (

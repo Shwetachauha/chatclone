@@ -19,6 +19,7 @@ export interface Chat {
   isGroupChat: boolean;
   chatWith: ChatMember | null;
   groupName: string | null;
+  groupDescription?: string;
   groupAvatar?: string;
   groupAdmin: { id: string; name: string } | null;
   members: ChatMember[];

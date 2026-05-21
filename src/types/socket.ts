@@ -26,6 +26,8 @@ export enum ServerEvent {
   READ_RECEIPT = 'read_receipt',
   ONLINE_STATUS = 'online_status',
   GROUP_UPDATED = 'group_updated',
+  MEMBER_LEFT = 'member_left',
+  CHAT_DELETED = 'chat_deleted',
   ERROR = 'error',
   CALL_INCOMING = 'call:incoming',
   CALL_OFFER = 'call:offer',
