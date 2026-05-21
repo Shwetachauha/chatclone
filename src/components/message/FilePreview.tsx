@@ -1,5 +1,5 @@
-import { memo } from 'react';
-import { Box, Typography, Link } from '@mui/material';
+import { memo, useCallback } from 'react';
+import { Box, Typography, IconButton } from '@mui/material';
 import { InsertDriveFile, Download } from '@mui/icons-material';
 import { formatFileSize } from '@/utils/helpers';
 
@@ -20,6 +20,24 @@ export const FilePreview = memo(function FilePreview({
 }: FilePreviewProps) {
   const normalizedType = type.toLowerCase();
   const isImage = normalizedType === 'image' || /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(url || '') || /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(fileName || '');
+
+  const handleDownload = useCallback(async () => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = fileName || 'download';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      // Fallback: open in new tab
+      window.open(url, '_blank');
+    }
+  }, [url, fileName]);
 
   if (isImage) {
     return (
@@ -64,35 +82,31 @@ export const FilePreview = memo(function FilePreview({
   }
 
   return (
-    <Link
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      underline="none"
-      color="inherit"
+    <Box
+      display="flex"
+      alignItems="center"
+      gap={1}
+      p={1}
+      borderRadius={1}
+      bgcolor="action.hover"
+      mb={0.5}
+      sx={{ cursor: 'pointer' }}
+      onClick={handleDownload}
     >
-      <Box
-        display="flex"
-        alignItems="center"
-        gap={1}
-        p={1}
-        borderRadius={1}
-        bgcolor="action.hover"
-        mb={0.5}
-      >
-        <InsertDriveFile sx={{ fontSize: 32 }} />
-        <Box flex={1} overflow="hidden">
-          <Typography variant="body2" noWrap fontWeight={500}>
-            {fileName || 'File'}
+      <InsertDriveFile sx={{ fontSize: 32 }} />
+      <Box flex={1} overflow="hidden">
+        <Typography variant="body2" noWrap fontWeight={500}>
+          {fileName || 'File'}
+        </Typography>
+        {fileSize && (
+          <Typography variant="caption" color="text.secondary">
+            {formatFileSize(fileSize)}
           </Typography>
-          {fileSize && (
-            <Typography variant="caption" color="text.secondary">
-              {formatFileSize(fileSize)}
-            </Typography>
-          )}
-        </Box>
-        <Download sx={{ fontSize: 20 }} />
+        )}
       </Box>
-    </Link>
+      <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDownload(); }}>
+        <Download sx={{ fontSize: 20 }} />
+      </IconButton>
+    </Box>
   );
 });
